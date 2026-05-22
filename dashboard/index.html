@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>BTX Mining Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  :root {
+    --bg: #0f1419;
+    --bg-elev: #1c2128;
+    --bg-card: #161b22;
+    --border: #30363d;
+    --fg: #e6edf3;
+    --fg-dim: #8b949e;
+    --fg-faint: #6e7681;
+    --accent: #d29922;     /* btx-gold */
+    --accent2: #58a6ff;    /* link-blue */
+    --green: #3fb950;
+    --red: #f85149;
+    --orange: #f0883e;
+    --purple: #a371f7;
+    --mono: "SF Mono", "Menlo", "JetBrains Mono", "Consolas", monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--fg);
+    font-size: 14px; line-height: 1.45;
+  }
+  header {
+    background: var(--bg-elev); border-bottom: 1px solid var(--border);
+    padding: 14px 24px; display: flex; align-items: center; gap: 24px;
+  }
+  header h1 { font-size: 18px; font-weight: 700; letter-spacing: 0.02em; }
+  header .tag {
+    background: var(--accent); color: #000; padding: 2px 8px;
+    border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+  }
+  header .status { margin-left: auto; display: flex; gap: 18px; font-size: 12px; color: var(--fg-dim); }
+  header .status .dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--green); margin-right: 6px; vertical-align: middle;
+  }
+  header .status .dot.down { background: var(--red); }
+  header .status .dot.warn { background: var(--orange); }
+  main { padding: 20px 24px 80px; max-width: 1600px; margin: 0 auto; }
+
+  /* Top metric cards */
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+    margin-bottom: 22px;
+  }
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px 16px;
+  }
+  .card h2 {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--fg-dim); margin-bottom: 6px;
+  }
+  .card .val { font-size: 26px; font-weight: 600; font-family: var(--mono); }
+  .card .val.small { font-size: 16px; font-weight: 500; }
+  .card .sub { font-size: 11px; color: var(--fg-faint); margin-top: 4px; font-family: var(--mono); }
+  .card.accent .val { color: var(--accent); }
+  .card.green .val { color: var(--green); }
+  .card.blue .val { color: var(--accent2); }
+  .card.purple .val { color: var(--purple); }
+
+  /* Chart grids */
+  .charts {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 14px;
+    margin-bottom: 22px;
+  }
+  .chart-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px;
+  }
+  .chart-card h3 {
+    font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--fg-dim); margin-bottom: 10px;
+  }
+  .chart-card canvas { max-height: 260px; }
+
+  /* Tables */
+  .tables { display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; margin-bottom: 22px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; font-family: var(--mono); }
+  thead th {
+    text-align: left; padding: 8px 10px; color: var(--fg-dim);
+    font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.06em;
+    border-bottom: 1px solid var(--border);
+  }
+  tbody td { padding: 6px 10px; border-bottom: 1px solid var(--border); }
+  tbody tr.ours { background: rgba(210, 153, 34, 0.13); }
+  tbody tr.ours td:first-child::before { content: "★ "; color: var(--accent); }
+
+  .pill {
+    display: inline-block; padding: 1px 7px; border-radius: 9px; font-size: 10px;
+    background: var(--bg-elev); color: var(--fg-dim); font-family: var(--mono);
+  }
+  .pill.in { color: var(--accent2); }
+  .pill.out { color: var(--purple); }
+  footer {
+    color: var(--fg-faint); font-size: 11px; margin-top: 24px; text-align: center;
+    font-family: var(--mono);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>BTX MINING RIG</h1>
+  <span class="tag" id="alg-tag">matmul</span>
+  <div class="status">
+    <span id="connection-status"><span class="dot" id="conn-dot"></span><span id="conn-text">connecting…</span></span>
+    <span id="updated">last update: —</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- TOP METRIC CARDS -->
+  <div class="metrics">
+    <div class="card accent">
+      <h2>Local Hashrate (calibrated)</h2>
+      <div class="val" id="m-hashrate">— /s</div>
+      <div class="sub" id="m-hashrate-sub">from solve-bench</div>
+    </div>
+    <div class="card blue">
+      <h2>Network Hashrate</h2>
+      <div class="val" id="m-net-hashrate">— /s</div>
+      <div class="sub" id="m-net-hashrate-sub">all miners combined</div>
+    </div>
+    <div class="card green">
+      <h2>Our Share</h2>
+      <div class="val" id="m-share">—%</div>
+      <div class="sub" id="m-share-sub">of total network</div>
+    </div>
+    <div class="card purple">
+      <h2>Expected BTX/day</h2>
+      <div class="val" id="m-btx-day">—</div>
+      <div class="sub" id="m-btx-day-sub">@ current share</div>
+    </div>
+    <div class="card">
+      <h2>Chain Tip</h2>
+      <div class="val" id="m-tip">—</div>
+      <div class="sub" id="m-tip-sub">peers: — • size: —</div>
+    </div>
+    <div class="card">
+      <h2>Difficulty</h2>
+      <div class="val" id="m-diff">—</div>
+      <div class="sub" id="m-diff-sub">target = 90s/block</div>
+    </div>
+    <div class="card">
+      <h2>Wallet Balance</h2>
+      <div class="val small" id="m-wallet">— BTX</div>
+      <div class="sub" id="m-wallet-sub">immature + mature + pending</div>
+    </div>
+    <div class="card">
+      <h2>Mining Loop</h2>
+      <div class="val small" id="m-loop">— iters</div>
+      <div class="sub" id="m-loop-sub">blocks: — • PID: —</div>
+    </div>
+  </div>
+
+  <div class="metrics">
+    <div class="card">
+      <h2>Mean Wait per Block</h2>
+      <div class="val small" id="m-wait">— hrs</div>
+      <div class="sub" id="m-wait-sub">at current share</div>
+    </div>
+    <div class="card">
+      <h2>Loop rate (uncalibrated)</h2>
+      <div class="val small" id="m-loop-rate">— /s</div>
+      <div class="sub" id="m-loop-rate-sub">~77× inflated vs real H/s (maxtries counter)</div>
+    </div>
+    <div class="card">
+      <h2>Last bench</h2>
+      <div class="val small" id="m-bench-age">—</div>
+      <div class="sub" id="m-bench-age-sub">re-runs every 10 min</div>
+    </div>
+    <div class="card">
+      <h2>Algorithm</h2>
+      <div class="val small">MatMul PoW</div>
+      <div class="sub" id="m-algo-sub">n=512, b=16, r=8, M31 field</div>
+    </div>
+  </div>
+
+  <!-- CHARTS -->
+  <div class="charts">
+    <div class="chart-card">
+      <h3>Hashrate over time — local (gold) vs scaled network (blue)</h3>
+      <canvas id="chart-hashrate"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>Our Share % of network</h3>
+      <canvas id="chart-share"></canvas>
+    </div>
+  </div>
+
+  <div class="charts">
+    <div class="chart-card">
+      <h3>Difficulty over time</h3>
+      <canvas id="chart-difficulty"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>Block winners (last 20 blocks)</h3>
+      <canvas id="chart-winners"></canvas>
+    </div>
+  </div>
+
+  <!-- TABLES -->
+  <div class="tables">
+    <div class="chart-card">
+      <h3>Recent Blocks</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Height</th><th>Coinbase →</th><th>Reward</th><th>txs</th><th>Time</th>
+          </tr>
+        </thead>
+        <tbody id="t-blocks"><tr><td colspan="5">loading…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="chart-card">
+      <h3>Connected Peers</h3>
+      <table>
+        <thead>
+          <tr><th>Address</th><th>Ver</th><th>Dir</th><th>Height</th></tr>
+        </thead>
+        <tbody id="t-peers"><tr><td colspan="4">loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  BTX Mining Dashboard · payout addr: <code>the address auto-discovered from your mining log</code> · auto-refresh: 10s · localhost only
+</footer>
+
+<script>
+const POLL_INTERVAL_MS = 10000;
+const NUM_HISTORY_POINTS = 120;
+
+const charts = {};
+let lastSnap = null;
+
+const COLOR = {
+  gold: '#d29922', goldFill: 'rgba(210,153,34,0.15)',
+  blue: '#58a6ff', blueFill: 'rgba(88,166,255,0.15)',
+  green: '#3fb950', greenFill: 'rgba(63,185,80,0.15)',
+  red: '#f85149',
+  purple: '#a371f7', purpleFill: 'rgba(163,113,247,0.15)',
+  dim: '#6e7681',
+};
+
+function formatNum(n, digits=0) {
+  if (n == null) return '—';
+  if (n >= 1e9) return (n/1e9).toFixed(2) + 'G';
+  if (n >= 1e6) return (n/1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1) + 'k';
+  return Number(n).toFixed(digits);
+}
+function formatBTX(n) {
+  if (n == null) return '—';
+  if (n === 0) return '0';
+  if (n < 0.0001) return n.toExponential(2);
+  return Number(n).toFixed(4).replace(/\.?0+$/,'');
+}
+function formatPct(n) {
+  if (n == null) return '—%';
+  if (n >= 1) return n.toFixed(2) + '%';
+  return n.toFixed(4) + '%';
+}
+function formatTime(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts * 1000);
+  return d.toLocaleTimeString();
+}
+
+function makeChart(id, type, datasets, opts={}) {
+  const ctx = document.getElementById(id).getContext('2d');
+  const defaults = {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    plugins: {
+      legend: { labels: { color: COLOR.dim, font: { size: 11 } } },
+      tooltip: { backgroundColor: '#1c2128', borderColor: '#30363d', borderWidth: 1 },
+    },
+    scales: type === 'doughnut' || type === 'bar' ? undefined : {
+      x: { ticks: { color: COLOR.dim, font: { size: 10 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 6 }, grid: { color: '#21262d' } },
+      y: { ticks: { color: COLOR.dim, font: { size: 10 } }, grid: { color: '#21262d' }, beginAtZero: true },
+    },
+  };
+  charts[id] = new Chart(ctx, {
+    type, data: { datasets },
+    options: { ...defaults, ...opts },
+  });
+}
+
+function initCharts() {
+  makeChart('chart-hashrate', 'line', [
+    { label: 'Local (H/s)', data: [], borderColor: COLOR.gold, backgroundColor: COLOR.goldFill, fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 },
+    { label: 'Network / 10 (H/s)', data: [], borderColor: COLOR.blue, backgroundColor: COLOR.blueFill, fill: false, tension: 0.3, pointRadius: 0, borderWidth: 2, borderDash: [4, 3] },
+  ]);
+  makeChart('chart-share', 'line', [
+    { label: 'Share %', data: [], borderColor: COLOR.green, backgroundColor: COLOR.greenFill, fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 },
+  ]);
+  makeChart('chart-difficulty', 'line', [
+    { label: 'Difficulty', data: [], borderColor: COLOR.purple, backgroundColor: COLOR.purpleFill, fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 },
+  ]);
+  makeChart('chart-winners', 'bar', [
+    { label: 'Block count', data: [], backgroundColor: [], borderWidth: 0 },
+  ]);
+}
+
+async function pollSnapshot() {
+  try {
+    const [snap, history, blocks] = await Promise.all([
+      fetch('/api/snapshot').then(r => r.json()),
+      fetch('/api/history').then(r => r.json()),
+      fetch('/api/recent-blocks').then(r => r.json()),
+    ]);
+    lastSnap = snap;
+    updateConnection(true);
+    updateCards(snap);
+    updateCharts(history);
+    updateBlocksTable(blocks);
+    updatePeersTable(snap.peers);
+    updateWinnersChart(blocks);
+    document.getElementById('updated').textContent = 'last update: ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    console.error('poll error', e);
+    updateConnection(false);
+  }
+}
+
+function updateConnection(ok) {
+  const dot = document.getElementById('conn-dot');
+  const text = document.getElementById('conn-text');
+  dot.classList.toggle('down', !ok);
+  text.textContent = ok ? 'connected to btxd' : 'disconnected';
+}
+
+function updateCards(s) {
+  const m = s.miner || {};
+  const c = s.chain || {};
+  const mi = s.mining || {};
+  const n = s.network || {};
+  const w = s.wallet || {};
+  const bench = s.bench || null;
+
+  // PRIMARY hashrate is the calibrated bench-measured rate
+  const calibratedRate = bench ? Math.round(bench.nonces_per_sec) : null;
+  document.getElementById('m-hashrate').textContent = calibratedRate != null
+    ? formatNum(calibratedRate) + ' H/s'
+    : '(calibrating…)';
+  document.getElementById('m-hashrate-sub').textContent = bench
+    ? `${bench.mean_ms ? bench.mean_ms.toFixed(1) + 'ms/attempt' : 'measured'} • bench`
+    : 'waiting for first bench run';
+
+  document.getElementById('m-net-hashrate').textContent = formatNum(mi.networkhashps) + ' H/s';
+  document.getElementById('m-net-hashrate-sub').textContent = `algorithm: ${mi.algorithm || 'matmul'}`;
+
+  const share = s.share_pct;
+  document.getElementById('m-share').textContent = formatPct(share);
+  document.getElementById('m-share-sub').textContent = share != null
+    ? `expected ${s.expected_blocks_per_day} blocks/day`
+    : 'of total network';
+
+  document.getElementById('m-btx-day').textContent = s.expected_btx_per_day != null
+    ? formatBTX(s.expected_btx_per_day) + ' BTX'
+    : '—';
+  document.getElementById('m-btx-day-sub').textContent = 'at current measured rate';
+
+  document.getElementById('m-tip').textContent = c.blocks != null ? formatNum(c.blocks, 0) : '—';
+  document.getElementById('m-tip-sub').textContent =
+    `peers: ${n.connections || 0} • size: ${c.size_on_disk ? formatNum(c.size_on_disk) + 'B' : '—'}`;
+
+  document.getElementById('m-diff').textContent = c.difficulty != null
+    ? Number(c.difficulty).toExponential(2)
+    : '—';
+  document.getElementById('m-diff-sub').textContent = `target: 90s/block`;
+
+  document.getElementById('m-wallet').textContent =
+    formatBTX(w.total) + ' BTX';
+  document.getElementById('m-wallet-sub').textContent =
+    `immature: ${formatBTX(w.immature)} • mature: ${formatBTX(w.trusted)} • pend: ${formatBTX(w.untrusted_pending)}`;
+
+  document.getElementById('m-loop').textContent = `${m.iters || 0} iters`;
+  document.getElementById('m-loop-sub').textContent = m.loop_alive
+    ? `blocks: ${m.blocks_found || 0} • PID: ${m.pid}`
+    : `loop NOT RUNNING`;
+
+  document.getElementById('alg-tag').textContent = mi.algorithm || 'matmul';
+
+  // Second row of cards
+  const waitHours = s.expected_hours_per_block;
+  document.getElementById('m-wait').textContent = waitHours != null
+    ? (waitHours < 1 ? (waitHours * 60).toFixed(1) + ' min' : waitHours.toFixed(1) + ' hrs')
+    : '—';
+  document.getElementById('m-wait-sub').textContent = s.share_pct != null
+    ? `share: ${formatPct(s.share_pct)}`
+    : 'unknown';
+
+  document.getElementById('m-loop-rate').textContent = m.rate_per_sec != null
+    ? formatNum(m.rate_per_sec) + '/s'
+    : '—';
+  const inflation = (calibratedRate && m.rate_per_sec)
+    ? (m.rate_per_sec / calibratedRate).toFixed(0)
+    : '?';
+  document.getElementById('m-loop-rate-sub').textContent =
+    `inflated ${inflation}× vs real (maxtries counter)`;
+
+  document.getElementById('m-bench-age').textContent = bench
+    ? Math.round((Date.now() / 1000 - bench.measured_at) / 60) + ' min ago'
+    : 'pending';
+  document.getElementById('m-bench-age-sub').textContent = 'next: ' +
+    (bench
+      ? Math.max(0, Math.round(10 - (Date.now() / 1000 - bench.measured_at) / 60)) + ' min'
+      : 'soon');
+
+  document.getElementById('m-algo-sub').textContent =
+    `n=${mi.matmul_n || '?'}, b=${mi.matmul_b || '?'}, r=${mi.matmul_r || '?'}, M31 field`;
+}
+
+function updateCharts(history) {
+  if (!Array.isArray(history) || !history.length) return;
+  const slice = history.slice(-NUM_HISTORY_POINTS);
+  const labels = slice.map(r => new Date(r.t * 1000).toLocaleTimeString().slice(0,5));
+
+  // hashrate chart
+  charts['chart-hashrate'].data.labels = labels;
+  charts['chart-hashrate'].data.datasets[0].data = slice.map(r => r.rate);
+  charts['chart-hashrate'].data.datasets[1].data = slice.map(r => r.net_hps ? r.net_hps / 10 : null);
+  charts['chart-hashrate'].update();
+
+  // share chart
+  charts['chart-share'].data.labels = labels;
+  charts['chart-share'].data.datasets[0].data = slice.map(r => r.share_pct);
+  charts['chart-share'].update();
+
+  // difficulty chart
+  charts['chart-difficulty'].data.labels = labels;
+  charts['chart-difficulty'].data.datasets[0].data = slice.map(r => r.difficulty);
+  charts['chart-difficulty'].update();
+}
+
+function updateBlocksTable(blocks) {
+  if (!Array.isArray(blocks)) return;
+  const tbody = document.getElementById('t-blocks');
+  tbody.innerHTML = blocks.map(b => `
+    <tr class="${b.is_ours ? 'ours' : ''}">
+      <td>${b.height}</td>
+      <td title="${b.coinbase_addr}">${(b.coinbase_addr || '?').slice(0, 18)}…</td>
+      <td>${b.coinbase_value || '?'}</td>
+      <td>${b.n_txs}</td>
+      <td>${formatTime(b.time)}</td>
+    </tr>
+  `).join('');
+}
+
+function updatePeersTable(peers) {
+  if (!Array.isArray(peers)) return;
+  const tbody = document.getElementById('t-peers');
+  if (!peers.length) {
+    tbody.innerHTML = '<tr><td colspan="4">no peers</td></tr>';
+    return;
+  }
+  tbody.innerHTML = peers.slice(0, 10).map(p => `
+    <tr>
+      <td>${(p.addr || '?').slice(0, 28)}</td>
+      <td>${(p.subver || '?').replace(/^\//,'').replace(/\/$/,'').slice(0, 16)}</td>
+      <td><span class="pill ${p.inbound ? 'in' : 'out'}">${p.inbound ? 'IN' : 'OUT'}</span></td>
+      <td>${p.startingheight ?? '—'}</td>
+    </tr>
+  `).join('');
+}
+
+function updateWinnersChart(blocks) {
+  if (!Array.isArray(blocks)) return;
+  const counts = {};
+  blocks.forEach(b => {
+    const k = (b.coinbase_addr || '?').slice(0, 14) + '…';
+    counts[k] = (counts[k] || 0) + 1;
+    if (b.is_ours) counts[k + ' (US)'] = (counts[k + ' (US)'] || 0) + 0;  // ensure visible
+  });
+  const labels = Object.keys(counts).slice(0, 8);
+  const data = labels.map(l => counts[l]);
+  const colors = labels.map(l => l.includes('zermeeg') ? COLOR.gold : COLOR.blue);
+  charts['chart-winners'].data.labels = labels;
+  charts['chart-winners'].data.datasets[0].data = data;
+  charts['chart-winners'].data.datasets[0].backgroundColor = colors;
+  charts['chart-winners'].update();
+}
+
+// boot
+initCharts();
+pollSnapshot();
+setInterval(pollSnapshot, POLL_INTERVAL_MS);
+</script>
+
+</body>
+</html>

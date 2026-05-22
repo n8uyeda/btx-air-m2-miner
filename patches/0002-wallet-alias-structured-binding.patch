@@ -1,0 +1,49 @@
+From 93e741b36a9f5faa2865019ee3602dfa4bc5c26b Mon Sep 17 00:00:00 2001
+From: n8uyeda <n8uyeda@users.noreply.github.com>
+Date: Fri, 22 May 2026 12:50:49 -0700
+Subject: [PATCH] wallet: alias structured binding to satisfy AppleClang 15
+ lambda capture
+
+AppleClang 15.0 rejects capturing a structured binding by reference in
+a lambda under strict C++20, even though the C++20 standard arguably
+permits it (and newer clang accepts it without complaint).
+
+The 'search' lambda inside SelectSchedulableV2IngressNotes captures
+'group_notes' from a structured binding in the enclosing for-each loop.
+On AppleClang 15 this produces:
+
+  error: reference to local binding 'group_notes' declared in enclosing
+         function 'SelectSchedulableV2IngressNotes'
+
+This is the same C++20 wording-defect family that several clang versions
+have varying enforcement on. The minimum-impact fix is to alias the
+structured binding to a regular variable; the inner lambda then captures
+the alias, which is unambiguously permitted.
+
+Tested on macOS 14.2.1, AppleClang 15.0.0.15000309. Compiles cleanly
+with -DENABLE_WALLET=ON. Wallet binary and 'btx-cli createwallet' /
+'getnewaddress' RPCs functional post-build.
+---
+ src/wallet/shielded_wallet.cpp | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/src/wallet/shielded_wallet.cpp b/src/wallet/shielded_wallet.cpp
+index 8932680..368c74b 100644
+--- a/src/wallet/shielded_wallet.cpp
++++ b/src/wallet/shielded_wallet.cpp
+@@ -558,7 +558,11 @@ BuildAddressLifecycleControlTransactionImpl(
+     size_t best_count{std::numeric_limits<size_t>::max()};
+     size_t search_states{0};
+ 
+-    for (auto& [_, group_notes] : grouped) {
++    // AppleClang 15 rejects structured-binding captures in lambdas under strict C++20;
++    // alias to a regular variable so the lambda (`search` below) can capture by reference.
++    // (Diligence patch 2026-05-21.)
++    for (auto& grouped_entry : grouped) {
++        auto& group_notes = grouped_entry.second;
+         std::sort(group_notes.begin(), group_notes.end(), [](const ShieldedCoin& a, const ShieldedCoin& b) {
+             return std::tie(a.note.value, a.tree_position, a.nullifier) >
+                    std::tie(b.note.value, b.tree_position, b.nullifier);
+-- 
+2.39.3 (Apple Git-146)
+

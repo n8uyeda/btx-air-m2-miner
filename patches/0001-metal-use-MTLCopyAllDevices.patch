@@ -1,0 +1,111 @@
+From 9fb6de4bb2c6e16f3489b621b6c9ebcb594df92a Mon Sep 17 00:00:00 2001
+From: n8uyeda <n8uyeda@users.noreply.github.com>
+Date: Fri, 22 May 2026 12:50:49 -0700
+Subject: [PATCH] metal: use MTLCopyAllDevices instead of
+ MTLCreateSystemDefaultDevice
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+MTLCreateSystemDefaultDevice() is explicitly restricted to interactive
+apps on macOS 14+. From a CLI or daemon context (which is exactly how
+btxd, btx-genesis, btx-matmul-backend-info, and btx-matmul-solve-bench
+are invoked), it returns nil with the system log:
+
+    Use of MTLCreateSystemDefaultDevice is not supported for
+    non-interactive (commandline or daemon) apps.
+    Use MTLCopyAllDevices(WithObserver) instead.
+
+Effect: on every Apple Silicon Mac running these binaries from Terminal
+on macOS 14 or newer, the Metal backend probe returns
+'No Metal-compatible GPU device found' and the daemon silently falls
+back to CPU mining. The Metal mining path documented as the production
+default on Apple Silicon in doc/btx-metal-mining-tuning.md is therefore
+unreachable for typical end-user CLI launches.
+
+This commit replaces the call in all three Metal contexts
+(matmul_accel.mm, oracle_accel.mm, nonce_accel.mm) with
+MTLCopyAllDevices(), picking the first available device. The fix is
+exactly what Apple's documentation recommends for non-interactive
+contexts. Tested on M2 / macOS 14.2.1: backend probe now returns
+'requested_backend_available' and btx-matmul-solve-bench produces
+~2,898 nonces/sec on this M2 base host. .app-bundle wrapping and
+ad-hoc codesigning do not work around the original issue; the source
+change is the canonical fix.
+
+Refs: Apple Metal Framework — MTLCopyAllDevices documentation.
+---
+ src/metal/matmul_accel.mm | 8 ++++++--
+ src/metal/nonce_accel.mm  | 8 ++++++--
+ src/metal/oracle_accel.mm | 8 ++++++--
+ 3 files changed, 18 insertions(+), 6 deletions(-)
+
+diff --git a/src/metal/matmul_accel.mm b/src/metal/matmul_accel.mm
+index d713865..38ac032 100644
+--- a/src/metal/matmul_accel.mm
++++ b/src/metal/matmul_accel.mm
+@@ -1122,11 +1122,15 @@ bool ShouldPrewarmMetalPoolSlots()
+     MetalContext()
+     {
+         @autoreleasepool {
+-            device = MTLCreateSystemDefaultDevice();
+-            if (device == nil) {
++            // MTLCreateSystemDefaultDevice() is restricted to interactive apps on
++            // macOS 14+; it returns nil from CLI/daemon contexts. MTLCopyAllDevices()
++            // works in any context. (Diligence patch 2026-05-21.)
++            NSArray<id<MTLDevice>>* allDevices = MTLCopyAllDevices();
++            if (allDevices == nil || allDevices.count == 0) {
+                 error = "No Metal-compatible GPU device found";
+                 return;
+             }
++            device = allDevices[0];
+             capture_supported = [MTLCaptureManager sharedCaptureManager] != nil;
+             pool_slots.resize(ResolveMetalPoolSlotCount());
+             for (auto& slot : pool_slots) {
+diff --git a/src/metal/nonce_accel.mm b/src/metal/nonce_accel.mm
+index 2c24e1e..415668f 100644
+--- a/src/metal/nonce_accel.mm
++++ b/src/metal/nonce_accel.mm
+@@ -55,11 +55,15 @@ kernel void nonce_prefilter(device const ulong* params [[buffer(0)]],
+     MetalContext()
+     {
+         @autoreleasepool {
+-            device = MTLCreateSystemDefaultDevice();
+-            if (device == nil) {
++            // MTLCreateSystemDefaultDevice() is restricted to interactive apps on
++            // macOS 14+; it returns nil from CLI/daemon contexts. MTLCopyAllDevices()
++            // works in any context. (Diligence patch 2026-05-21.)
++            NSArray<id<MTLDevice>>* allDevices = MTLCopyAllDevices();
++            if (allDevices == nil || allDevices.count == 0) {
+                 error = "No Metal-compatible GPU device found";
+                 return;
+             }
++            device = allDevices[0];
+ 
+             queue = [device newCommandQueue];
+             if (queue == nil) {
+diff --git a/src/metal/oracle_accel.mm b/src/metal/oracle_accel.mm
+index 812abea..79dc01f 100644
+--- a/src/metal/oracle_accel.mm
++++ b/src/metal/oracle_accel.mm
+@@ -281,11 +281,15 @@ kernel void generate_oracle_vector(constant OracleParams& p [[buffer(0)]],
+     MetalContext()
+     {
+         @autoreleasepool {
+-            device = MTLCreateSystemDefaultDevice();
+-            if (device == nil) {
++            // MTLCreateSystemDefaultDevice() is restricted to interactive apps on
++            // macOS 14+; it returns nil from CLI/daemon contexts. MTLCopyAllDevices()
++            // works in any context. (Diligence patch 2026-05-21.)
++            NSArray<id<MTLDevice>>* allDevices = MTLCopyAllDevices();
++            if (allDevices == nil || allDevices.count == 0) {
+                 error = "No Metal-compatible GPU device found";
+                 return;
+             }
++            device = allDevices[0];
+ 
+             queue = [device newCommandQueue];
+             if (queue == nil) {
+-- 
+2.39.3 (Apple Git-146)
+

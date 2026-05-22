@@ -1,0 +1,47 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+.fseventsd
+.Spotlight-V100
+.Trashes
+._*
+
+# Build artifacts (BTX is cloned + built outside this repo)
+build/
+build-btx/
+*.o
+*.dylib
+*.so
+
+# Wallet / mining state that MUST NEVER be committed
+**/wallets/
+**/wallet.dat
+**/last_bench.json
+**/mining-loop.log
+**/mining-loop.pid
+**/server.pid
+**/server.log
+**/history.jsonl
+**/.cookie
+**/debug.log
+**/btx.conf
+**/btxd.pid
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Local install state (created by install.sh, not committed)
+.install-state/
+~/dev/btx/
+~/.btx/
