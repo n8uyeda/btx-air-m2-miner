@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BTX Mining Cockpit</title>
+
+<style>
+  /* ---- palette + base ----------------------------------------------- */
+  :root {
+    --bg-0: #050714;
+    --bg-1: #0a0f1f;
+    --bg-2: #121a35;
+    --ink: #e7ecff;
+    --ink-dim: #8a96c0;
+    --ink-faint: #4a5278;
+    --cyan: #5fb8ff;
+    --violet: #b463ff;
+    --gold: #ffd66b;
+    --warm: #ff7547;
+    --green: #5fff9f;
+    --pink: #ff5fb6;
+    --line: rgba(180, 200, 255, 0.08);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: radial-gradient(ellipse at top, var(--bg-1) 0%, var(--bg-0) 70%);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ---- aurora ribbon ------------------------------------------------ */
+  .aurora-wrap {
+    position: relative;
+    height: 100px;
+    overflow: hidden;
+    border-bottom: 1px solid var(--line);
+  }
+  #aurora { display: block; width: 100%; height: 100%; }
+
+  /* ---- header ------------------------------------------------------- */
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 28px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(10, 15, 31, 0.6);
+    backdrop-filter: blur(8px);
+  }
+  header h1 {
+    font-weight: 600;
+    font-size: 22px;
+    letter-spacing: 0.5px;
+    background: linear-gradient(90deg, var(--cyan), var(--violet));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header .meta {
+    display: flex;
+    gap: 22px;
+    font-size: 13px;
+    color: var(--ink-dim);
+    align-items: center;
+  }
+  header .meta strong { color: var(--ink); font-weight: 500; }
+  .pulse-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: breathe 2s ease-in-out infinite;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .pulse-dot.stale { background: var(--warm); box-shadow: 0 0 8px var(--warm); }
+  @keyframes breathe {
+    0%, 100% { opacity: 0.4; transform: scale(0.9); }
+    50% { opacity: 1; transform: scale(1.15); }
+  }
+
+  /* ---- grid --------------------------------------------------------- */
+  main {
+    padding: 22px;
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 18px;
+  }
+
+  .card {
+    background: linear-gradient(160deg, rgba(18, 26, 53, 0.65) 0%, rgba(10, 15, 31, 0.45) 100%);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px;
+    position: relative;
+    overflow: hidden;
+    backdrop-filter: blur(6px);
+  }
+  .card h2 {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    margin-bottom: 12px;
+  }
+
+  /* canvas containers - keep canvas behind the title */
+  .canvas-card { padding: 0; }
+  .canvas-card h2 {
+    position: absolute;
+    top: 14px; left: 18px;
+    z-index: 2;
+    margin: 0;
+  }
+  .canvas-card .badge {
+    position: absolute;
+    top: 14px; right: 18px;
+    z-index: 2;
+    font-size: 11px;
+    color: var(--ink-dim);
+  }
+
+  /* col spans */
+  .span-3 { grid-column: span 3; }
+  .span-4 { grid-column: span 4; }
+  .span-5 { grid-column: span 5; }
+  .span-6 { grid-column: span 6; }
+  .span-7 { grid-column: span 7; }
+  .span-8 { grid-column: span 8; }
+  .span-12 { grid-column: span 12; }
+  @media (max-width: 1100px) {
+    .span-3, .span-4, .span-5 { grid-column: span 6; }
+    .span-6, .span-7, .span-8 { grid-column: span 12; }
+  }
+
+  /* ---- gauge -------------------------------------------------------- */
+  .gauge-card { height: 320px; }
+  #gauge { width: 100%; height: 100%; display: block; }
+  .gauge-readout {
+    position: absolute;
+    bottom: 22px; left: 0; right: 0;
+    text-align: center;
+    z-index: 3;
+  }
+  .gauge-readout .num {
+    font-size: 38px;
+    font-weight: 200;
+    font-feature-settings: "tnum";
+    color: var(--ink);
+    text-shadow: 0 0 18px rgba(95, 184, 255, 0.4);
+  }
+  .gauge-readout .unit {
+    display: block;
+    font-size: 10px;
+    color: var(--ink-dim);
+    letter-spacing: 1.5px;
+    margin-top: 2px;
+  }
+
+  /* ---- lattice ------------------------------------------------------ */
+  .lattice-card { height: 320px; }
+  #lattice { width: 100%; height: 100%; display: block; }
+
+  /* ---- share ring --------------------------------------------------- */
+  .share-card { height: 320px; }
+  #share-ring { width: 100%; height: 100%; display: block; }
+  .share-readout {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    pointer-events: none;
+    z-index: 3;
+  }
+  .share-readout .num {
+    font-size: 38px;
+    font-weight: 200;
+    font-feature-settings: "tnum";
+    background: linear-gradient(90deg, var(--violet), var(--cyan));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .share-readout .label {
+    font-size: 10px;
+    color: var(--ink-dim);
+    letter-spacing: 1.5px;
+    margin-top: 4px;
+  }
+
+  /* ---- particle field ---------------------------------------------- */
+  .particles-card { height: 240px; }
+  #particles { width: 100%; height: 100%; display: block; }
+  .particles-card .legend {
+    position: absolute;
+    bottom: 12px; right: 18px;
+    z-index: 3;
+    font-size: 10px;
+    color: var(--ink-faint);
+    letter-spacing: 1px;
+  }
+
+  /* ---- peer constellation ------------------------------------------ */
+  .peer-card { height: 360px; }
+  #peers { width: 100%; height: 100%; display: block; }
+
+  /* ---- lottery wheel ----------------------------------------------- */
+  .lottery-card { height: 360px; }
+  #lottery { width: 100%; height: 100%; display: block; }
+  .lottery-readout {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    pointer-events: none;
+    z-index: 3;
+  }
+  .lottery-readout .num {
+    font-size: 28px;
+    font-weight: 200;
+    color: var(--gold);
+    font-feature-settings: "tnum";
+  }
+  .lottery-readout .label {
+    font-size: 10px;
+    color: var(--ink-dim);
+    letter-spacing: 1.5px;
+    margin-top: 4px;
+  }
+
+  /* ---- metrics strip ----------------------------------------------- */
+  .metrics-strip {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 18px;
+  }
+  .metric {
+    text-align: left;
+  }
+  .metric .label {
+    font-size: 10px;
+    color: var(--ink-dim);
+    letter-spacing: 1.3px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .metric .num {
+    font-size: 24px;
+    font-weight: 300;
+    font-feature-settings: "tnum";
+    color: var(--ink);
+  }
+  .metric .sub {
+    font-size: 11px;
+    color: var(--ink-faint);
+    margin-top: 2px;
+  }
+  @media (max-width: 1100px) {
+    .metrics-strip { grid-template-columns: repeat(3, 1fr); }
+  }
+  @media (max-width: 600px) {
+    .metrics-strip { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  /* tiny status feed bottom-right */
+  .feed {
+    font-size: 11px;
+    color: var(--ink-faint);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    line-height: 1.6;
+    max-height: 200px;
+    overflow: hidden;
+  }
+  .feed .line { opacity: 0.7; }
+  .feed .line.fresh { color: var(--cyan); opacity: 1; }
+
+  footer {
+    padding: 16px 28px 32px;
+    text-align: center;
+    color: var(--ink-faint);
+    font-size: 11px;
+    letter-spacing: 1px;
+  }
+</style>
+</head>
+<body>
+
+<div class="aurora-wrap"><canvas id="aurora"></canvas></div>
+
+<header>
+  <h1>BTX Mining Cockpit</h1>
+  <div class="meta">
+    <span><span class="pulse-dot" id="status-dot"></span><strong id="status-text">connecting…</strong></span>
+    <span>tip <strong id="tip">—</strong></span>
+    <span>peers <strong id="peers-count">—</strong></span>
+    <span id="updated">—</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- Row 1: gauge | lattice | share ring -->
+  <section class="card canvas-card gauge-card span-4">
+    <h2>Hashrate</h2>
+    <span class="badge" id="gauge-badge">bench</span>
+    <canvas id="gauge"></canvas>
+    <div class="gauge-readout">
+      <div class="num" id="hashrate">0</div>
+      <div class="unit">NONCES PER SECOND</div>
+    </div>
+  </section>
+
+  <section class="card canvas-card lattice-card span-4">
+    <h2>Post-Quantum Lattice</h2>
+    <span class="badge">ML-DSA · SLH-DSA</span>
+    <canvas id="lattice"></canvas>
+  </section>
+
+  <section class="card canvas-card share-card span-4">
+    <h2>Network Share</h2>
+    <span class="badge" id="share-badge">—</span>
+    <canvas id="share-ring"></canvas>
+    <div class="share-readout">
+      <div class="num" id="share">0.00%</div>
+      <div class="label">OF GLOBAL HASHRATE</div>
+    </div>
+  </section>
+
+  <!-- Row 2: particle field full-width -->
+  <section class="card canvas-card particles-card span-12">
+    <h2>Live Hash Attempts</h2>
+    <canvas id="particles"></canvas>
+    <div class="legend">dim = miss · gold flash = lucky nonce</div>
+  </section>
+
+  <!-- Row 3: peer constellation | lottery wheel -->
+  <section class="card canvas-card peer-card span-7">
+    <h2>Peer Constellation</h2>
+    <span class="badge" id="peer-badge">—</span>
+    <canvas id="peers"></canvas>
+  </section>
+
+  <section class="card canvas-card lottery-card span-5">
+    <h2>Block Lottery</h2>
+    <span class="badge">expected interval</span>
+    <canvas id="lottery"></canvas>
+    <div class="lottery-readout">
+      <div class="num" id="lottery-eta">—</div>
+      <div class="label">MEAN WAIT PER BLOCK</div>
+    </div>
+  </section>
+
+  <!-- Row 4: metric strip -->
+  <section class="card span-12">
+    <h2>Live Metrics</h2>
+    <div class="metrics-strip">
+      <div class="metric">
+        <div class="label">Network Hashrate</div>
+        <div class="num" id="m-nethash">—</div>
+        <div class="sub" id="m-nethash-sub">global</div>
+      </div>
+      <div class="metric">
+        <div class="label">Difficulty</div>
+        <div class="num" id="m-diff">—</div>
+        <div class="sub">current target</div>
+      </div>
+      <div class="metric">
+        <div class="label">Expected BTX / Day</div>
+        <div class="num" id="m-btxday">—</div>
+        <div class="sub">at current share</div>
+      </div>
+      <div class="metric">
+        <div class="label">Wallet Balance</div>
+        <div class="num" id="m-wallet">—</div>
+        <div class="sub" id="m-wallet-sub">total</div>
+      </div>
+      <div class="metric">
+        <div class="label">Blocks Found</div>
+        <div class="num" id="m-found">—</div>
+        <div class="sub">your wins</div>
+      </div>
+      <div class="metric">
+        <div class="label">Mining Loop</div>
+        <div class="num" id="m-loop">—</div>
+        <div class="sub" id="m-loop-sub">—</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Row 5: log feed -->
+  <section class="card span-12">
+    <h2>Miner Log Stream</h2>
+    <div class="feed" id="feed">waiting for snapshot…</div>
+  </section>
+
+</main>
+
+<footer>
+  v2 cockpit · refreshes every 5s · <span id="port">:8766</span> · v1 on :8765
+</footer>
+
+<!-- ---- Three.js for the lattice ---------------------------------- -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+
+<script>
+/* =====================================================================
+ *  BTX Mining Cockpit — v2
+ *
+ *  All animations driven by requestAnimationFrame; the snapshot poll
+ *  every 5s updates the *targets*, and the visuals smoothly interpolate
+ *  toward them. This gives the feeling of live fluctuation even though
+ *  the underlying RPC data only updates every 15s.
+ * =================================================================== */
+
+// ---------- state -----------------------------------------------------
+const state = {
+  snapshot: null,
+  prevSnapshot: null,
+  // smoothed live values (interpolated)
+  hashrate: 0,        // nonces/sec
+  hashrateTarget: 0,
+  sharePct: 0,
+  sharePctTarget: 0,
+  netHash: 0,
+  netHashTarget: 0,
+  // hashrate history for jitter envelope
+  recentRates: [],
+  lastUpdate: 0,
+  lastBlockHeight: null,
+  blockFlash: 0,      // 1.0 on new block, decays
+};
+
+// ---------- formatting ------------------------------------------------
+function fmtRate(r) {
+  if (!r) return '0';
+  if (r >= 1e9) return (r / 1e9).toFixed(2) + ' G';
+  if (r >= 1e6) return (r / 1e6).toFixed(2) + ' M';
+  if (r >= 1e3) return (r / 1e3).toFixed(2) + ' k';
+  return r.toFixed(0);
+}
+function fmtPct(p) {
+  if (p < 0.001) return p.toFixed(5) + '%';
+  if (p < 0.01)  return p.toFixed(4) + '%';
+  if (p < 1)    return p.toFixed(3) + '%';
+  return p.toFixed(2) + '%';
+}
+function fmtBtx(n) {
+  if (n === null || n === undefined) return '—';
+  if (n < 0.01) return n.toFixed(6);
+  return n.toFixed(4);
+}
+function fmtHours(h) {
+  if (!h) return '—';
+  if (h < 1) return (h * 60).toFixed(0) + ' min';
+  if (h < 48) return h.toFixed(1) + ' h';
+  return (h / 24).toFixed(1) + ' d';
+}
+function fmtAgo(t) {
+  const s = (Date.now() / 1000) - t;
+  if (s < 60) return Math.floor(s) + 's ago';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  return Math.floor(s / 3600) + 'h ago';
+}
+
+// ---------- snapshot polling -----------------------------------------
+async function poll() {
+  try {
+    const r = await fetch('/api/snapshot');
+    if (!r.ok) throw new Error('http ' + r.status);
+    const snap = await r.json();
+    state.prevSnapshot = state.snapshot;
+    state.snapshot = snap;
+    state.lastUpdate = Date.now();
+
+    // promote interpolation targets
+    state.hashrateTarget = snap.effective_hashrate || 0;
+    state.sharePctTarget = snap.share_pct || 0;
+    state.netHashTarget = snap.mining?.networkhashps || 0;
+
+    // detect block flash (any new block at all — your wins make the
+    // mining.blocks_found jump; everyone's wins make chain.blocks jump)
+    const h = snap.chain?.blocks;
+    if (state.lastBlockHeight !== null && h > state.lastBlockHeight) {
+      state.blockFlash = 1.0;
+    }
+    state.lastBlockHeight = h;
+
+    updateDOM(snap);
+    document.getElementById('status-dot').classList.remove('stale');
+    document.getElementById('status-text').textContent = snap.chain?.ibd ? 'syncing' : 'live';
+  } catch (e) {
+    document.getElementById('status-dot').classList.add('stale');
+    document.getElementById('status-text').textContent = 'stale';
+    console.warn('poll failed', e);
+  }
+}
+
+function updateDOM(snap) {
+  document.getElementById('tip').textContent = (snap.chain?.blocks || 0).toLocaleString();
+  document.getElementById('peers-count').textContent = snap.network?.connections || 0;
+  document.getElementById('updated').textContent = 'updated ' + fmtAgo(snap.timestamp);
+
+  // gauge badge: bench timestamp
+  if (snap.bench?.measured_at) {
+    document.getElementById('gauge-badge').textContent = 'bench ' + fmtAgo(snap.bench.measured_at);
+  } else {
+    document.getElementById('gauge-badge').textContent = 'loop estimate';
+  }
+
+  // share badge
+  document.getElementById('share-badge').textContent = (snap.effective_rate_source || '—');
+
+  // metrics strip
+  const nethash = snap.mining?.networkhashps || 0;
+  document.getElementById('m-nethash').textContent = fmtRate(nethash) + ' H/s';
+  document.getElementById('m-diff').textContent = (snap.chain?.difficulty || 0).toFixed(4);
+  document.getElementById('m-btxday').textContent = fmtBtx(snap.expected_btx_per_day);
+  document.getElementById('m-wallet').textContent = fmtBtx(snap.wallet?.total);
+  if (snap.wallet?.immature > 0) {
+    document.getElementById('m-wallet-sub').textContent = fmtBtx(snap.wallet.immature) + ' immature';
+  }
+  document.getElementById('m-found').textContent = snap.miner?.blocks_found ?? '—';
+  const alive = snap.miner?.loop_alive;
+  document.getElementById('m-loop').textContent = alive ? 'alive' : 'down';
+  document.getElementById('m-loop').style.color = alive ? 'var(--green)' : 'var(--warm)';
+  document.getElementById('m-loop-sub').textContent = snap.miner?.pid ? 'pid ' + snap.miner.pid : '—';
+
+  // lottery readout
+  document.getElementById('lottery-eta').textContent = fmtHours(snap.expected_hours_per_block);
+
+  // peer count badge
+  document.getElementById('peer-badge').textContent = (snap.peers?.length || 0) + ' connected';
+
+  // log feed
+  const feed = document.getElementById('feed');
+  if (snap.miner?.log_lines?.length) {
+    const lines = snap.miner.log_lines.slice(-12);
+    feed.innerHTML = lines.map((l, i) => {
+      const fresh = i === lines.length - 1 ? 'fresh' : '';
+      return `<div class="line ${fresh}">${escapeHtml(l)}</div>`;
+    }).join('');
+  }
+}
+
+function escapeHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+// ---------- DOM smoothing tween --------------------------------------
+function tweenNumbers(dt) {
+  // ease toward target with simple lerp
+  const k = 1 - Math.exp(-dt * 2.5); // smoother for ~0.4s settle time
+  state.hashrate += (state.hashrateTarget - state.hashrate) * k;
+  state.sharePct += (state.sharePctTarget - state.sharePct) * k;
+  state.netHash  += (state.netHashTarget  - state.netHash)  * k;
+
+  // add micro-jitter so the numbers don't sit completely flat between polls
+  const jitter = 1 + (Math.random() - 0.5) * 0.015;
+
+  document.getElementById('hashrate').textContent = fmtRate(state.hashrate * jitter);
+  document.getElementById('share').textContent = fmtPct(state.sharePct * jitter);
+}
+
+// ---------- 1. AURORA RIBBON ----------------------------------------
+const aurora = document.getElementById('aurora');
+const auroraCtx = aurora.getContext('2d');
+function sizeAurora() {
+  const dpr = window.devicePixelRatio || 1;
+  aurora.width = aurora.clientWidth * dpr;
+  aurora.height = aurora.clientHeight * dpr;
+  auroraCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', sizeAurora);
+
+function drawAurora(t) {
+  const w = aurora.clientWidth, h = aurora.clientHeight;
+  // intensity tracks live hashrate (clamped log scale)
+  const intensity = Math.min(1, Math.log(1 + state.hashrate / 200) / 4);
+  auroraCtx.fillStyle = '#050714';
+  auroraCtx.fillRect(0, 0, w, h);
+
+  // three flowing layers
+  for (let layer = 0; layer < 3; layer++) {
+    const phase = t * 0.0006 * (1 + layer * 0.3) + layer * 2;
+    const speed = 0.4 + intensity * 1.4;
+    const grad = auroraCtx.createLinearGradient(0, 0, w, 0);
+    // shift palette with intensity
+    const hue1 = layer === 0 ? 200 : layer === 1 ? 270 : 320;
+    const hue2 = (hue1 + 60) % 360;
+    grad.addColorStop(0, `hsla(${hue1}, 90%, 55%, ${0.18 * intensity + 0.06})`);
+    grad.addColorStop(0.5, `hsla(${hue2}, 90%, 65%, ${0.24 * intensity + 0.08})`);
+    grad.addColorStop(1, `hsla(${hue1}, 90%, 55%, ${0.18 * intensity + 0.06})`);
+    auroraCtx.fillStyle = grad;
+
+    auroraCtx.beginPath();
+    auroraCtx.moveTo(0, h);
+    for (let x = 0; x <= w; x += 4) {
+      const y = h * 0.5
+        + Math.sin(x * 0.012 + phase * speed) * 18 * (1 + intensity)
+        + Math.sin(x * 0.005 - phase * speed * 0.7) * 12 * (1 + intensity)
+        + layer * 8;
+      auroraCtx.lineTo(x, y);
+    }
+    auroraCtx.lineTo(w, h);
+    auroraCtx.closePath();
+    auroraCtx.fill();
+  }
+
+  // gold flash overlay on new block
+  if (state.blockFlash > 0.01) {
+    auroraCtx.fillStyle = `rgba(255, 214, 107, ${state.blockFlash * 0.45})`;
+    auroraCtx.fillRect(0, 0, w, h);
+    state.blockFlash *= 0.95;
+  }
+}
+
+// ---------- 2. RADIAL GAUGE -----------------------------------------
+const gauge = document.getElementById('gauge');
+const gCtx = gauge.getContext('2d');
+function sizeGauge() {
+  const dpr = window.devicePixelRatio || 1;
+  gauge.width = gauge.clientWidth * dpr;
+  gauge.height = gauge.clientHeight * dpr;
+  gCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', sizeGauge);
+
+function drawGauge(t) {
+  const w = gauge.clientWidth, h = gauge.clientHeight;
+  const cx = w / 2, cy = h * 0.62, r = Math.min(w, h * 1.4) * 0.36;
+  gCtx.clearRect(0, 0, w, h);
+
+  // dynamic max — rolls with measured rate
+  const maxRate = Math.max(2000, state.hashrate * 1.8, ...(state.recentRates.length ? [Math.max(...state.recentRates) * 1.5] : []));
+  const frac = Math.min(1, state.hashrate / maxRate);
+
+  // arc params — gauge spans 240° from -210° to +30°
+  const startA = Math.PI * 1.166; // 210°
+  const endA = -Math.PI * 0.166;  // -30°
+  const sweep = endA - startA;
+
+  // outer ticks
+  for (let i = 0; i <= 24; i++) {
+    const a = startA + (sweep * i / 24);
+    const isMajor = i % 6 === 0;
+    const inner = r - (isMajor ? 14 : 7);
+    const outer = r;
+    gCtx.strokeStyle = i / 24 <= frac
+      ? `hsla(${200 + (i / 24) * 80}, 90%, 65%, ${0.6 + 0.4 * (i / 24)})`
+      : 'rgba(120, 140, 200, 0.12)';
+    gCtx.lineWidth = isMajor ? 2.5 : 1.2;
+    gCtx.beginPath();
+    gCtx.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner);
+    gCtx.lineTo(cx + Math.cos(a) * outer, cy + Math.sin(a) * outer);
+    gCtx.stroke();
+  }
+
+  // arc background
+  gCtx.strokeStyle = 'rgba(120, 140, 200, 0.08)';
+  gCtx.lineWidth = 14;
+  gCtx.lineCap = 'round';
+  gCtx.beginPath();
+  gCtx.arc(cx, cy, r - 26, startA, endA);
+  gCtx.stroke();
+
+  // arc fill (gradient)
+  const grad = gCtx.createLinearGradient(cx - r, cy, cx + r, cy);
+  grad.addColorStop(0, '#5fb8ff');
+  grad.addColorStop(0.5, '#b463ff');
+  grad.addColorStop(1, '#ff5fb6');
+  gCtx.strokeStyle = grad;
+  gCtx.lineWidth = 14;
+  gCtx.beginPath();
+  gCtx.arc(cx, cy, r - 26, startA, startA + sweep * frac);
+  gCtx.stroke();
+
+  // pulsing halo at needle tip
+  const needleA = startA + sweep * frac;
+  const tipX = cx + Math.cos(needleA) * (r - 26);
+  const tipY = cy + Math.sin(needleA) * (r - 26);
+  const pulse = 0.7 + 0.3 * Math.sin(t * 0.004);
+  const halo = gCtx.createRadialGradient(tipX, tipY, 0, tipX, tipY, 22 * pulse);
+  halo.addColorStop(0, 'rgba(255, 95, 182, 0.7)');
+  halo.addColorStop(1, 'rgba(255, 95, 182, 0)');
+  gCtx.fillStyle = halo;
+  gCtx.beginPath();
+  gCtx.arc(tipX, tipY, 22 * pulse, 0, Math.PI * 2);
+  gCtx.fill();
+
+  // needle
+  gCtx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+  gCtx.lineWidth = 2;
+  gCtx.lineCap = 'round';
+  gCtx.beginPath();
+  gCtx.moveTo(cx + Math.cos(needleA + Math.PI) * 14, cy + Math.sin(needleA + Math.PI) * 14);
+  gCtx.lineTo(tipX, tipY);
+  gCtx.stroke();
+  // hub
+  gCtx.fillStyle = '#e7ecff';
+  gCtx.beginPath();
+  gCtx.arc(cx, cy, 5, 0, Math.PI * 2);
+  gCtx.fill();
+}
+
+// ---------- 3. SHARE RING -------------------------------------------
+const ring = document.getElementById('share-ring');
+const rCtx = ring.getContext('2d');
+function sizeRing() {
+  const dpr = window.devicePixelRatio || 1;
+  ring.width = ring.clientWidth * dpr;
+  ring.height = ring.clientHeight * dpr;
+  rCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', sizeRing);
+
+function drawShareRing(t) {
+  const w = ring.clientWidth, h = ring.clientHeight;
+  const cx = w / 2, cy = h / 2, r = Math.min(w, h) * 0.36;
+  rCtx.clearRect(0, 0, w, h);
+
+  // pct is a tiny number — visualize on log scale so it's visible
+  const pct = state.sharePct;
+  // map: 0.001% → 0.15 fill, 0.01% → 0.30, 0.1% → 0.45, 1% → 0.60, 10% → 0.75, 100% → 1
+  const visualFill = pct > 0 ? Math.min(1, 0.15 + Math.log10(pct * 1000 + 1) * 0.15) : 0;
+
+  // three concentric rings rotating
+  for (let i = 0; i < 3; i++) {
+    const ringR = r + i * 18;
+    const speed = (i % 2 === 0 ? 1 : -1) * (0.0003 + i * 0.0002);
+    const offset = t * speed;
+    rCtx.strokeStyle = `rgba(180, 100, 255, ${0.15 - i * 0.04})`;
+    rCtx.lineWidth = 1;
+    rCtx.setLineDash([6, 8 + i * 4]);
+    rCtx.beginPath();
+    rCtx.arc(cx, cy, ringR, offset, Math.PI * 2 + offset);
+    rCtx.stroke();
+  }
+  rCtx.setLineDash([]);
+
+  // background ring
+  rCtx.strokeStyle = 'rgba(120, 140, 200, 0.10)';
+  rCtx.lineWidth = 18;
+  rCtx.beginPath();
+  rCtx.arc(cx, cy, r, 0, Math.PI * 2);
+  rCtx.stroke();
+
+  // fill ring
+  const fillA = Math.PI * 2 * visualFill;
+  const grad = rCtx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+  grad.addColorStop(0, '#5fb8ff');
+  grad.addColorStop(1, '#b463ff');
+  rCtx.strokeStyle = grad;
+  rCtx.lineWidth = 18;
+  rCtx.lineCap = 'round';
+  rCtx.beginPath();
+  rCtx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + fillA);
+  rCtx.stroke();
+
+  // breathing center glow
+  const breath = 0.4 + 0.2 * Math.sin(t * 0.0015);
+  const center = rCtx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.8);
+  center.addColorStop(0, `rgba(180, 100, 255, ${breath * 0.35})`);
+  center.addColorStop(1, 'rgba(180, 100, 255, 0)');
+  rCtx.fillStyle = center;
+  rCtx.beginPath();
+  rCtx.arc(cx, cy, r * 0.8, 0, Math.PI * 2);
+  rCtx.fill();
+}
+
+// ---------- 4. PARTICLE FIELD ---------------------------------------
+const particles = document.getElementById('particles');
+const pCtx = particles.getContext('2d');
+let particleList = [];
+
+function sizeParticles() {
+  const dpr = window.devicePixelRatio || 1;
+  particles.width = particles.clientWidth * dpr;
+  particles.height = particles.clientHeight * dpr;
+  pCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', sizeParticles);
+
+function spawnParticle() {
+  const w = particles.clientWidth, h = particles.clientHeight;
+  // 1 in N attempts is "lucky" — purely visual; tied to a configurable
+  // odds ratio so the gold flashes actually appear at a watchable rate.
+  const lucky = Math.random() < 1 / 600;
+  particleList.push({
+    x: -10,
+    y: Math.random() * h,
+    vx: 80 + Math.random() * 160 + state.hashrate * 0.0001,
+    vy: (Math.random() - 0.5) * 20,
+    r: lucky ? 3 + Math.random() * 2 : 0.8 + Math.random() * 1.4,
+    life: 1.0,
+    lucky,
+    born: performance.now(),
+  });
+  if (particleList.length > 800) particleList.shift();
+}
+
+function drawParticles(t, dt) {
+  const w = particles.clientWidth, h = particles.clientHeight;
+  // fade trail
+  pCtx.fillStyle = 'rgba(5, 7, 20, 0.18)';
+  pCtx.fillRect(0, 0, w, h);
+
+  // spawn rate proportional to live hashrate (log scale → watchable density)
+  const target = Math.min(180, Math.round(8 + Math.log(1 + state.hashrate) * 12));
+  for (let i = 0; i < Math.max(1, Math.floor(target * dt)); i++) {
+    spawnParticle();
+  }
+
+  for (let i = particleList.length - 1; i >= 0; i--) {
+    const p = particleList[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt * 0.5;
+    if (p.x > w + 10 || p.life <= 0) {
+      particleList.splice(i, 1);
+      continue;
+    }
+    const alpha = Math.max(0, Math.min(1, p.life));
+    if (p.lucky) {
+      // gold flash with halo
+      const halo = pCtx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 8);
+      halo.addColorStop(0, `rgba(255, 214, 107, ${alpha * 0.9})`);
+      halo.addColorStop(1, 'rgba(255, 214, 107, 0)');
+      pCtx.fillStyle = halo;
+      pCtx.beginPath();
+      pCtx.arc(p.x, p.y, p.r * 8, 0, Math.PI * 2);
+      pCtx.fill();
+      pCtx.fillStyle = `rgba(255, 240, 200, ${alpha})`;
+      pCtx.beginPath();
+      pCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      pCtx.fill();
+    } else {
+      // dim purple/cyan miss
+      const hue = 200 + (p.y / h) * 80;
+      pCtx.fillStyle = `hsla(${hue}, 80%, 70%, ${alpha * 0.45})`;
+      pCtx.beginPath();
+      pCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      pCtx.fill();
+    }
+  }
+}
+
+// ---------- 5. THREE.JS LATTICE -------------------------------------
+let lScene, lCam, lRenderer, lLattice, lPoints;
+function initLattice() {
+  const canvas = document.getElementById('lattice');
+  lRenderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  lRenderer.setPixelRatio(window.devicePixelRatio);
+  lRenderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+
+  lScene = new THREE.Scene();
+  lCam = new THREE.PerspectiveCamera(50, canvas.clientWidth / canvas.clientHeight, 0.1, 100);
+  lCam.position.set(0, 0, 6);
+
+  // lattice — icosahedron wireframe, multiple shells
+  const group = new THREE.Group();
+  for (let i = 0; i < 3; i++) {
+    const geo = new THREE.IcosahedronGeometry(1.6 + i * 0.35, 1);
+    const wire = new THREE.WireframeGeometry(geo);
+    const mat = new THREE.LineBasicMaterial({
+      color: i === 0 ? 0x5fb8ff : i === 1 ? 0xb463ff : 0xff5fb6,
+      transparent: true,
+      opacity: 0.55 - i * 0.13,
+    });
+    const line = new THREE.LineSegments(wire, mat);
+    line.userData.spin = (i + 1) * (i % 2 === 0 ? 1 : -1) * 0.001;
+    group.add(line);
+  }
+  lLattice = group;
+  lScene.add(group);
+
+  // floating points (vertices)
+  const pts = new THREE.BufferGeometry();
+  const arr = [];
+  for (let i = 0; i < 200; i++) {
+    const phi = Math.random() * Math.PI * 2;
+    const theta = Math.acos(2 * Math.random() - 1);
+    const r = 1.4 + Math.random() * 1.6;
+    arr.push(
+      r * Math.sin(theta) * Math.cos(phi),
+      r * Math.sin(theta) * Math.sin(phi),
+      r * Math.cos(theta)
+    );
+  }
+  pts.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+  const pmat = new THREE.PointsMaterial({
+    color: 0xffd66b, size: 0.03, transparent: true, opacity: 0.8,
+  });
+  lPoints = new THREE.Points(pts, pmat);
+  lScene.add(lPoints);
+
+  window.addEventListener('resize', sizeLattice);
+  sizeLattice();
+}
+function sizeLattice() {
+  const canvas = document.getElementById('lattice');
+  lCam.aspect = canvas.clientWidth / canvas.clientHeight;
+  lCam.updateProjectionMatrix();
+  lRenderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+}
+function drawLattice(t) {
+  // spin speed tracks intensity (faster mining → faster spin)
+  const intensity = Math.min(2, 0.5 + state.hashrate / 4000);
+  lLattice.children.forEach((line) => {
+    line.rotation.y += line.userData.spin * intensity * 16;
+    line.rotation.x += line.userData.spin * intensity * 9;
+  });
+  lPoints.rotation.y += 0.0008 * intensity * 16;
+  lPoints.rotation.z -= 0.0005 * intensity * 16;
+
+  // breathing scale
+  const breath = 1 + 0.04 * Math.sin(t * 0.0015);
+  lLattice.scale.set(breath, breath, breath);
+
+  // block flash → quick scale pulse
+  if (state.blockFlash > 0.05) {
+    lLattice.scale.multiplyScalar(1 + state.blockFlash * 0.15);
+  }
+
+  lRenderer.render(lScene, lCam);
+}
+
+// ---------- 6. PEER CONSTELLATION -----------------------------------
+const peerCanvas = document.getElementById('peers');
+const pcCtx = peerCanvas.getContext('2d');
+let peerNodes = [];
+
+function sizePeers() {
+  const dpr = window.devicePixelRatio || 1;
+  peerCanvas.width = peerCanvas.clientWidth * dpr;
+  peerCanvas.height = peerCanvas.clientHeight * dpr;
+  pcCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', sizePeers);
+
+function syncPeers() {
+  const list = state.snapshot?.peers || [];
+  // keep stable positions per peer addr
+  const byAddr = new Map(peerNodes.map(n => [n.addr, n]));
+  peerNodes = list.map((p, i) => {
+    const existing = byAddr.get(p.addr);
+    if (existing) {
+      existing.latency = p.latency || 0;
+      existing.bytesrecv = p.bytesrecv || 0;
+      existing.bytessent = p.bytessent || 0;
+      return existing;
+    }
+    // new — random orbit
+    const angle = (i / list.length) * Math.PI * 2 + Math.random() * 0.5;
+    return {
+      addr: p.addr,
+      angle,
+      orbitR: 0.55 + Math.random() * 0.4,
+      orbitSpeed: 0.0002 + Math.random() * 0.0003,
+      latency: p.latency || 0,
+      bytesrecv: p.bytesrecv || 0,
+      bytessent: p.bytessent || 0,
+      twinkle: Math.random() * Math.PI * 2,
+    };
+  });
+}
+
+function drawPeers(t, dt) {
+  const w = peerCanvas.clientWidth, h = peerCanvas.clientHeight;
+  pcCtx.fillStyle = 'rgba(5, 7, 20, 0.35)';
+  pcCtx.fillRect(0, 0, w, h);
+
+  const cx = w / 2, cy = h / 2;
+  const baseR = Math.min(w, h) * 0.42;
+
+  // central node (you)
+  const youPulse = 0.85 + 0.15 * Math.sin(t * 0.003);
+  const youGrad = pcCtx.createRadialGradient(cx, cy, 0, cx, cy, 40);
+  youGrad.addColorStop(0, `rgba(255, 214, 107, ${youPulse})`);
+  youGrad.addColorStop(0.5, `rgba(255, 214, 107, ${youPulse * 0.3})`);
+  youGrad.addColorStop(1, 'rgba(255, 214, 107, 0)');
+  pcCtx.fillStyle = youGrad;
+  pcCtx.beginPath();
+  pcCtx.arc(cx, cy, 40, 0, Math.PI * 2);
+  pcCtx.fill();
+  pcCtx.fillStyle = '#ffd66b';
+  pcCtx.beginPath();
+  pcCtx.arc(cx, cy, 5, 0, Math.PI * 2);
+  pcCtx.fill();
+
+  // draw peers + connections
+  peerNodes.forEach((p, i) => {
+    p.angle += p.orbitSpeed;
+    p.twinkle += dt * 2;
+    const px = cx + Math.cos(p.angle) * baseR * p.orbitR;
+    const py = cy + Math.sin(p.angle) * baseR * p.orbitR;
+
+    // connection line — opacity tied to latency (lower latency = brighter)
+    const latencyAlpha = Math.max(0.05, Math.min(0.5, 0.4 - p.latency * 0.5));
+    const lineGrad = pcCtx.createLinearGradient(cx, cy, px, py);
+    lineGrad.addColorStop(0, `rgba(255, 214, 107, ${latencyAlpha})`);
+    lineGrad.addColorStop(1, `rgba(95, 184, 255, ${latencyAlpha * 0.5})`);
+    pcCtx.strokeStyle = lineGrad;
+    pcCtx.lineWidth = 1;
+    pcCtx.beginPath();
+    pcCtx.moveTo(cx, cy);
+    pcCtx.lineTo(px, py);
+    pcCtx.stroke();
+
+    // peer node
+    const twinkle = 0.7 + 0.3 * Math.sin(p.twinkle);
+    const nodeGrad = pcCtx.createRadialGradient(px, py, 0, px, py, 14);
+    nodeGrad.addColorStop(0, `rgba(95, 184, 255, ${twinkle})`);
+    nodeGrad.addColorStop(1, 'rgba(95, 184, 255, 0)');
+    pcCtx.fillStyle = nodeGrad;
+    pcCtx.beginPath();
+    pcCtx.arc(px, py, 14, 0, Math.PI * 2);
+    pcCtx.fill();
+    pcCtx.fillStyle = `rgba(180, 220, 255, ${twinkle})`;
+    pcCtx.beginPath();
+    pcCtx.arc(px, py, 2.5, 0, Math.PI * 2);
+    pcCtx.fill();
+  });
+}
+
+// ---------- 7. BLOCK LOTTERY WHEEL ----------------------------------
+const lotteryCanvas = document.getElementById('lottery');
+const lotCtx = lotteryCanvas.getContext('2d');
+
+function sizeLottery() {
+  const dpr = window.devicePixelRatio || 1;
+  lotteryCanvas.width = lotteryCanvas.clientWidth * dpr;
+  lotteryCanvas.height = lotteryCanvas.clientHeight * dpr;
+  lotCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', sizeLottery);
+
+function drawLottery(t) {
+  const w = lotteryCanvas.clientWidth, h = lotteryCanvas.clientHeight;
+  const cx = w / 2, cy = h / 2;
+  const r = Math.min(w, h) * 0.4;
+  lotCtx.clearRect(0, 0, w, h);
+
+  // segmented dial (24 segments = expected hours scale)
+  const segments = 24;
+  for (let i = 0; i < segments; i++) {
+    const a1 = -Math.PI / 2 + (i / segments) * Math.PI * 2;
+    const a2 = -Math.PI / 2 + ((i + 1) / segments) * Math.PI * 2;
+    lotCtx.strokeStyle = `rgba(120, 140, 200, ${0.04 + (i % 6 === 0 ? 0.12 : 0)})`;
+    lotCtx.lineWidth = 14;
+    lotCtx.beginPath();
+    lotCtx.arc(cx, cy, r, a1 + 0.01, a2 - 0.01);
+    lotCtx.stroke();
+  }
+
+  // sweeping radar line
+  const sweepA = (t * 0.0008) % (Math.PI * 2) - Math.PI / 2;
+  for (let i = 0; i < 40; i++) {
+    const tailA = sweepA - (i / 40) * 1.2;
+    const alpha = (1 - i / 40) * 0.6;
+    lotCtx.strokeStyle = `rgba(255, 214, 107, ${alpha})`;
+    lotCtx.lineWidth = 14;
+    lotCtx.beginPath();
+    lotCtx.arc(cx, cy, r, tailA - 0.01, tailA + 0.01);
+    lotCtx.stroke();
+  }
+
+  // pulsing inner ring tied to share %
+  const sharePulse = 0.5 + 0.5 * Math.sin(t * 0.002);
+  const innerR = r * 0.6;
+  lotCtx.strokeStyle = `rgba(180, 100, 255, ${0.15 + sharePulse * 0.2})`;
+  lotCtx.lineWidth = 1;
+  lotCtx.beginPath();
+  lotCtx.arc(cx, cy, innerR, 0, Math.PI * 2);
+  lotCtx.stroke();
+
+  // tick labels (12, 24, ...hr ticks)
+  lotCtx.fillStyle = 'rgba(140, 160, 220, 0.5)';
+  lotCtx.font = '10px -apple-system, monospace';
+  lotCtx.textAlign = 'center';
+  for (let i = 0; i < 4; i++) {
+    const a = -Math.PI / 2 + (i / 4) * Math.PI * 2;
+    const tx = cx + Math.cos(a) * (r + 18);
+    const ty = cy + Math.sin(a) * (r + 18) + 4;
+    lotCtx.fillText(['0h', '6h', '12h', '18h'][i], tx, ty);
+  }
+
+  // gold ring on new block
+  if (state.blockFlash > 0.05) {
+    lotCtx.strokeStyle = `rgba(255, 214, 107, ${state.blockFlash})`;
+    lotCtx.lineWidth = 2;
+    lotCtx.beginPath();
+    lotCtx.arc(cx, cy, r + 10 * (1 - state.blockFlash), 0, Math.PI * 2);
+    lotCtx.stroke();
+  }
+}
+
+// ---------- master animation loop -----------------------------------
+let lastT = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - lastT) / 1000); // clamp dt
+  lastT = now;
+
+  tweenNumbers(dt);
+  drawAurora(now);
+  drawGauge(now);
+  drawShareRing(now);
+  drawParticles(now, dt);
+  if (lRenderer) drawLattice(now);
+  drawPeers(now, dt);
+  drawLottery(now);
+
+  requestAnimationFrame(loop);
+}
+
+// ---------- init -----------------------------------------------------
+function init() {
+  sizeAurora();
+  sizeGauge();
+  sizeRing();
+  sizeParticles();
+  sizePeers();
+  sizeLottery();
+  initLattice();
+
+  poll();
+  setInterval(poll, 5000);
+  // sync peer node list when snapshot arrives
+  setInterval(() => { if (state.snapshot) syncPeers(); }, 2000);
+
+  requestAnimationFrame(loop);
+}
+
+window.addEventListener('DOMContentLoaded', init);
+</script>
+
+</body>
+</html>
