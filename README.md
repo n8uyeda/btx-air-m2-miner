@@ -97,6 +97,10 @@ Things that took me days of debugging to figure out, baked into the installer + 
 
 7. **The canonical wallet backup workflow.** `listdescriptors true` exports descriptor structure but NOT the post-quantum (ML-DSA-44) signing keys — you get a backup that looks valid but can't actually spend coins. The correct RPC is `backupwalletbundlearchive`, which produces a complete encrypted bundle. The wallet-setup script walks you through it, including the test-restore step that verifies your backup is real.
 
+8. **The pruning + shielded-state recovery trap.** Discovered 2026-05-23. If you enable pruning and the daemon does a clean shutdown that catches the shielded subsystem mid-write, the next startup tries to rebuild shielded state from chain — and needs old blocks that pruning has deleted. The daemon then crashes on every restart attempt and the only recovery is a full re-sync. Kit defaults to **`prune=4096` commented out** so the rebuild path always has data. Costs you ~6-10 GB of extra disk going forward and prevents the trap entirely.
+
+9. **GPU tuning for M2 (and likely M1) base hardware.** Measured 2026-05-23: setting `BTX_MATMUL_SOLVER_THREADS=2` gives roughly **2× the nonces/sec** of the daemon's default of 1, on M2 base. The GPU is the bottleneck — more solver threads don't help and bigger batch sizes actually hurt (smaller unified-memory pool). The kit's `start-daemon.sh` sets this automatically; override by exporting `BTX_MATMUL_SOLVER_THREADS=N` before launch if you're on beefier hardware (M-series Pro/Max/Ultra → try 4 or 6).
+
 ---
 
 ## Repository structure

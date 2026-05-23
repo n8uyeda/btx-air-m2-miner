@@ -46,7 +46,14 @@ rpcpassword=${RPC_PW}
 
 # Resource budgets — modest defaults that work on 8 GB RAM
 dbcache=2048
-prune=4096
+# NOTE: pruning is intentionally DISABLED by default.
+# Discovered 2026-05-23: btxd's shielded-state rebuild path can crash on a
+# pruned node after any graceful shutdown that catches the shielded subsystem
+# mid-write. Recovery from that crash requires a full re-sync. Until that
+# upstream bug is patched, the safer default is to keep the full chain
+# (~6 GB and growing ~50 MB/day) so the rebuild path always has data.
+# If you want pruning anyway and accept the recovery risk, uncomment:
+# prune=4096
 retainshieldedcommitmentindex=1
 
 # Peer discovery + initial seed nodes (from the BTX project docs)
@@ -73,9 +80,14 @@ except: pass
     exit 0
 fi
 
-# Start
-echo "Starting btxd as daemon..."
-"$BTXD" -daemon -datadir="$DATADIR"
+# Start — with M2 GPU tuning baked in.
+# BTX_MATMUL_SOLVER_THREADS=2 measured ~2x nonces/sec vs default of 1 on M2
+# base hardware (2026-05-23 bench sweep). M2 GPU is the dispatch bottleneck;
+# more threads or bigger batches don't help and can hurt. If you're on a
+# beefier chip (M-series Pro/Max/Ultra), try 4 or 6 instead.
+TUNING_THREADS="${BTX_MATMUL_SOLVER_THREADS:-2}"
+echo "Starting btxd as daemon (BTX_MATMUL_SOLVER_THREADS=$TUNING_THREADS)..."
+BTX_MATMUL_SOLVER_THREADS=$TUNING_THREADS "$BTXD" -daemon -datadir="$DATADIR"
 sleep 5
 
 if pgrep -f "btxd.*-datadir=$DATADIR" >/dev/null; then
