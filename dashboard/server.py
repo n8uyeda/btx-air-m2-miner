@@ -183,9 +183,14 @@ def measure_real_hashrate() -> dict | None:
     if not Path(BTX_BENCH).exists():
         return None
     try:
+        # --solver-threads 2 matches the env-var tuning baked into start-daemon.sh
+        # (BTX_MATMUL_SOLVER_THREADS=2 for M2 base). Without this flag, the bench
+        # would default to solver-threads=1 and report the OLD baseline rate, making
+        # the dashboard cards show ~half the true production hashrate.
         result = subprocess.run(
             [BTX_BENCH, "--backend", "metal", "--block-height", "61000",
-             "--iterations", "1", "--tries", "20000"],
+             "--iterations", "1", "--tries", "20000",
+             "--solver-threads", "2"],
             capture_output=True, text=True, timeout=90)
         if result.returncode != 0:
             return None
@@ -361,11 +366,34 @@ def collector_loop():
         time.sleep(COLLECT_INTERVAL)
 
 
+def _mining_loop_alive() -> bool:
+    """True if the mining-loop process is currently running."""
+    pid_file = os.path.expanduser("~/.btx/mining-loop.pid")
+    if not os.path.exists(pid_file):
+        return False
+    try:
+        pid = int(open(pid_file).read().strip())
+        os.kill(pid, 0)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
 def bench_loop():
-    time.sleep(10)  # let initial collection happen first
+    """Periodic calibration bench.
+
+    Skip while the mining loop is alive — bench and mining share the GPU, and
+    a co-running bench shows ~30% of the real production rate, which would
+    mis-represent the daemon's actual throughput in the dashboard cards. Keep
+    the last clean cached bench (run while mining was paused) and use that.
+    """
+    time.sleep(10)
     while True:
         try:
-            measure_real_hashrate()
+            if _mining_loop_alive():
+                pass  # keep cached unloaded measurement
+            else:
+                measure_real_hashrate()
         except Exception as e:
             print(f"[bench loop error] {e}")
         time.sleep(BENCH_INTERVAL_SEC)
