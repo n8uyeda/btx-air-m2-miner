@@ -66,6 +66,42 @@ That's it. The longest part is the build (~30 min) and the initial chain sync (~
 
 ---
 
+## Performance notes (M2 base specifically)
+
+By default, `btxd` uses **1 CPU thread to feed mining work to the GPU**. The GPU is fast enough to finish a batch and then sit idle for a few milliseconds waiting for the CPU to prepare the next one. With **2 dispatcher threads alternating**, one prepares the next batch while the other waits on the GPU. The GPU stays continuously busy. **Result: roughly 2× the hashrate**, with no other changes.
+
+This kit sets `BTX_MATMUL_SOLVER_THREADS=2` automatically in `scripts/start-daemon.sh`. You don't need to do anything — just install and run.
+
+**Why we didn't push higher.** We tested 4 and 6 dispatcher threads — no further gain. We tested bigger batch sizes — performance actually *dropped* (M2's unified memory pool is smaller than M-series Pro/Max chips). On M2 base, the GPU itself is the bottleneck once you have 2 dispatchers. Further M2-side gains would require custom Metal shader work, which is out of scope for this kit.
+
+**If you have beefier Apple Silicon** (M2 Pro / Max / Ultra, M3 Pro / Max / Ultra, M4), try a higher value before launching:
+
+```bash
+BTX_MATMUL_SOLVER_THREADS=4 ./scripts/start-daemon.sh   # M-series Pro
+BTX_MATMUL_SOLVER_THREADS=6 ./scripts/start-daemon.sh   # M-series Max / Ultra
+```
+
+**Measured baselines on this rig:**
+
+| Hardware | Solver threads | Nonces/sec | Notes |
+|---|---|---|---|
+| M2 base, default | 1 | ~950 | Out-of-the-box `btxd` |
+| **M2 base, this kit** | **2** | **~2,500** | **Default in `scripts/start-daemon.sh`** |
+| M2 base, more threads | 4 or 6 | ~1,850 | No gain past 2; GPU is the wall |
+| M4 Max (project reference) | 6 | ~163,000 | From `doc/btx-metal-mining-tuning.md` upstream |
+
+If you want to verify the rate on your own hardware, the kit's bench tool runs it directly:
+
+```bash
+~/dev/btx/build/bin/btx-matmul-solve-bench --backend metal \
+  --block-height 61000 --iterations 1 --tries 20000 \
+  --solver-threads 2
+```
+
+Pause the mining loop first (`./scripts/stop-mining.sh`) for an accurate unloaded measurement — otherwise the bench competes with mining for GPU and under-reports by ~3×.
+
+---
+
 ## Full guide
 
 | Topic | Doc |
